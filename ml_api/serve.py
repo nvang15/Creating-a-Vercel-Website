@@ -69,7 +69,10 @@ app = FastAPI(
     version=API_VERSION,
 )
 
-allowed_origins = ["http://localhost:3000"]
+allowed_origins = [
+    "http://localhost:3000",
+    "https://vervelhw3.vercel.app",
+]
 frontend_origin = os.environ.get("FRONTEND_ORIGIN")
 
 if frontend_origin:

@@ -1,0 +1,219 @@
+{
+  "info": {
+    "_postman_id": "908d634a-8f03-4f8e-8c40-0f4d1f2360b4",
+    "name": "Assignment 4 Pokemon Legendary Predictor API",
+    "description": "Postman tests for the deployed Modal FastAPI Legendary Pokemon Predictor.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://nvang15--pokemon-legendary-predictor-api-fastapi-app.modal.run",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "health"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status code is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"status equals ok\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.status).to.eql(\"ok\");",
+              "});",
+              "",
+              "pm.test(\"artifact_loaded is true\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.artifact_loaded).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pipeline Info",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/pipeline",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "pipeline"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status code is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"sklearn_version exists\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property(\"sklearn_version\");",
+              "});",
+              "",
+              "pm.test(\"steps exists\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property(\"steps\");",
+              "});",
+              "",
+              "pm.test(\"model_type exists\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property(\"model_type\");",
+              "});",
+              "",
+              "pm.test(\"training_rows exists\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property(\"training_rows\");",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Valid Legendary Prediction",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Type1\": \"Dragon\",\n  \"Type2\": \"Flying\",\n  \"HP\": 105,\n  \"Attack\": 150,\n  \"Defense\": 90,\n  \"SpAtk\": 150,\n  \"SpDef\": 90,\n  \"Speed\": 95,\n  \"Generation\": 3\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/predict",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "predict"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status code is 200\", function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"prediction exists\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property(\"prediction\");",
+              "});",
+              "",
+              "pm.test(\"is_legendary exists\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property(\"is_legendary\");",
+              "});",
+              "",
+              "pm.test(\"legendary_probability exists\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property(\"legendary_probability\");",
+              "});",
+              "",
+              "pm.test(\"non_legendary_probability exists\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json).to.have.property(\"non_legendary_probability\");",
+              "});",
+              "",
+              "pm.test(\"legendary_probability is between 0 and 1\", function () {",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.legendary_probability).to.be.at.least(0);",
+              "  pm.expect(json.legendary_probability).to.be.at.most(1);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid Prediction - 422 Validation",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Type1\": \"Fire\",\n  \"Type2\": null,\n  \"HP\": -10,\n  \"Attack\": 80,\n  \"Defense\": 80,\n  \"SpAtk\": 80,\n  \"SpDef\": 80,\n  \"Speed\": 80,\n  \"Generation\": 999\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/predict",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "predict"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status code is 422\", function () {",
+              "  pm.response.to.have.status(422);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

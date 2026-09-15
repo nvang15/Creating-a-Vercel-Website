@@ -13,6 +13,14 @@
 # testing
 /coverage
 
+# python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.uv-cache/
+.uv-python/
+
 # next.js
 /.next/
 /out/
