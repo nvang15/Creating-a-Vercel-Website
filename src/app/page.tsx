@@ -10,6 +10,7 @@ import {
   ChevronsUpDown,
   Crown,
   Gauge,
+  LoaderCircle,
   RotateCcw,
   Search,
   Shield,
@@ -18,7 +19,8 @@ import {
   X,
   Zap,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import type { FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -69,6 +71,25 @@ type SortKey =
 type SortDirection = "asc" | "desc"
 type LegendaryFilter = "all" | "legendary" | "non-legendary"
 
+type PredictorInput = {
+  Type1: string
+  Type2: string
+  HP: number
+  Attack: number
+  Defense: number
+  SpAtk: number
+  SpDef: number
+  Speed: number
+  Generation: number
+}
+
+type PredictionResult = {
+  prediction: string
+  is_legendary: boolean
+  legendary_probability: number
+  non_legendary_probability: number
+}
+
 const statColumns = [
   "HP",
   "Attack",
@@ -111,6 +132,35 @@ const typeColors: Record<string, string> = {
   Steel: "#B8B8D0",
   Fairy: "#EE99AC",
 }
+
+const defaultPredictorInput: PredictorInput = {
+  Type1: "",
+  Type2: "",
+  HP: 80,
+  Attack: 80,
+  Defense: 80,
+  SpAtk: 80,
+  SpDef: 80,
+  Speed: 80,
+  Generation: 1,
+}
+
+const predictorGenerations = Array.from({ length: 9 }, (_, index) => index + 1)
+
+const predictorStatFields: {
+  key: keyof Pick<
+    PredictorInput,
+    "HP" | "Attack" | "Defense" | "SpAtk" | "SpDef" | "Speed"
+  >
+  label: string
+}[] = [
+  { key: "HP", label: "HP" },
+  { key: "Attack", label: "Attack" },
+  { key: "Defense", label: "Defense" },
+  { key: "SpAtk", label: "Sp. Attack" },
+  { key: "SpDef", label: "Sp. Defense" },
+  { key: "Speed", label: "Speed" },
+]
 
 function getBaseStatTotal(pokemon: PokemonRow) {
   return statColumns.reduce((total, stat) => total + pokemon[stat], 0)
@@ -285,10 +335,12 @@ function StatCard({
 function PokemonDetail({
   pokemon,
   allPokemon,
+  onAnalyzeWithMl,
   onClose,
 }: {
   pokemon: PokemonRow
   allPokemon: PokemonRow[]
+  onAnalyzeWithMl: (pokemon: PokemonRow) => void
   onClose: () => void
 }) {
   const relatedForms = allPokemon
@@ -345,6 +397,13 @@ function PokemonDetail({
               >
                 Sprite source: PokemonDB
               </a>
+              <Button
+                className="mt-4 w-full bg-cyan-300 text-slate-950 hover:bg-cyan-200"
+                onClick={() => onAnalyzeWithMl(pokemon)}
+              >
+                <Sparkles className="size-4" />
+                Analyze with ML
+              </Button>
               <h2 className="mt-5 text-3xl font-black text-white">
                 {pokemon.Name}
               </h2>
@@ -450,6 +509,7 @@ function PokemonDetail({
 }
 
 export default function Home() {
+  const predictorRef = useRef<HTMLElement | null>(null)
   const [pokemon, setPokemon] = useState<PokemonRow[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -467,6 +527,12 @@ export default function Home() {
   const [selectedPokemon, setSelectedPokemon] = useState<PokemonRow | null>(
     null
   )
+  const [predictorInput, setPredictorInput] =
+    useState<PredictorInput>(defaultPredictorInput)
+  const [predictionResult, setPredictionResult] =
+    useState<PredictionResult | null>(null)
+  const [predictionError, setPredictionError] = useState<string | null>(null)
+  const [isPredicting, setIsPredicting] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -510,6 +576,10 @@ export default function Home() {
       ).sort() as string[],
     [pokemon]
   )
+
+  const predictorTypes = availableTypes.length
+    ? availableTypes
+    : Object.keys(typeColors).sort()
 
   const availableGenerations = useMemo(
     () =>
@@ -624,6 +694,91 @@ export default function Home() {
     setSortDirection("asc")
   }
 
+  function updatePredictorInput<Key extends keyof PredictorInput>(
+    key: Key,
+    value: PredictorInput[Key]
+  ) {
+    setPredictorInput((current) => ({ ...current, [key]: value }))
+    setPredictionResult(null)
+    setPredictionError(null)
+  }
+
+  function analyzePokemonWithMl(entry: PokemonRow) {
+    setPredictorInput({
+      Type1: entry.Type1,
+      Type2: entry.Type2 ?? "",
+      HP: entry.HP,
+      Attack: entry.Attack,
+      Defense: entry.Defense,
+      SpAtk: entry.SpAtk,
+      SpDef: entry.SpDef,
+      Speed: entry.Speed,
+      Generation: entry.Generation,
+    })
+    setPredictionResult(null)
+    setPredictionError(null)
+    setSelectedPokemon(null)
+    window.setTimeout(() => {
+      predictorRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      })
+    }, 0)
+  }
+
+  async function handlePredictorSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!predictorInput.Type1) {
+      setPredictionError("Choose a Type 1 before analyzing.")
+      return
+    }
+
+    const modalApiUrl = process.env.NEXT_PUBLIC_MODAL_API_URL?.replace(/\/$/, "")
+
+    if (!modalApiUrl) {
+      setPredictionError("NEXT_PUBLIC_MODAL_API_URL is not configured.")
+      return
+    }
+
+    setIsPredicting(true)
+    setPredictionError(null)
+    setPredictionResult(null)
+
+    try {
+      const response = await fetch(`${modalApiUrl}/predict`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...predictorInput,
+          Type2: predictorInput.Type2 || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || `Prediction request failed: ${response.status}`)
+      }
+
+      const result = (await response.json()) as PredictionResult
+      setPredictionResult(result)
+    } catch (error) {
+      setPredictionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to reach the Legendary Predictor API."
+      )
+    } finally {
+      setIsPredicting(false)
+    }
+  }
+
+  function formatProbability(value: number) {
+    return `${(value * 100).toFixed(1)}%`
+  }
+
   return (
     <main className="min-h-screen overflow-hidden bg-[#0f172a] px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(45,212,191,0.18),transparent_28%),radial-gradient(circle_at_85%_0%,rgba(248,113,113,0.14),transparent_24%),linear-gradient(180deg,rgba(15,23,42,0),#020617_92%)]" />
@@ -683,6 +838,185 @@ export default function Home() {
             />
           </section>
         ) : null}
+
+        <section ref={predictorRef}>
+          <Card className="rounded-lg border-cyan-300/20 bg-white/[0.06] shadow-2xl shadow-black/20 backdrop-blur">
+            <CardHeader className="border-b border-white/10">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Badge className="border-cyan-300/30 bg-cyan-300/15 text-cyan-100">
+                      Modal ML estimate
+                    </Badge>
+                    <Badge className="border-white/10 bg-white/10 text-slate-300">
+                      scikit-learn Pipeline
+                    </Badge>
+                  </div>
+                  <CardTitle className="text-xl font-black text-white">
+                    Legendary Predictor
+                  </CardTitle>
+                  <CardDescription className="text-slate-400">
+                    Estimate Legendary status from type, generation, and base
+                    stats.
+                  </CardDescription>
+                </div>
+                {predictionResult ? (
+                  <Badge
+                    className={
+                      predictionResult.is_legendary
+                        ? "border-amber-300/30 bg-amber-300/15 text-amber-100"
+                        : "border-white/10 bg-white/10 text-slate-300"
+                    }
+                  >
+                    {predictionResult.prediction}
+                  </Badge>
+                ) : null}
+              </div>
+            </CardHeader>
+            <CardContent className="p-4">
+              <form className="grid gap-5" onSubmit={handlePredictorSubmit}>
+                <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr]">
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                      Type 1
+                    </span>
+                    <select
+                      required
+                      value={predictorInput.Type1}
+                      onChange={(event) =>
+                        updatePredictorInput("Type1", event.target.value)
+                      }
+                      className="h-11 w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 text-sm text-slate-100 outline-none ring-cyan-300/0 transition focus:ring-3 focus:ring-cyan-300/20"
+                    >
+                      <option value="">Choose a type</option>
+                      {predictorTypes.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                      Type 2
+                    </span>
+                    <select
+                      value={predictorInput.Type2}
+                      onChange={(event) =>
+                        updatePredictorInput("Type2", event.target.value)
+                      }
+                      className="h-11 w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 text-sm text-slate-100 outline-none ring-cyan-300/0 transition focus:ring-3 focus:ring-cyan-300/20"
+                    >
+                      <option value="">None</option>
+                      {predictorTypes.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                      Generation
+                    </span>
+                    <select
+                      value={predictorInput.Generation}
+                      onChange={(event) =>
+                        updatePredictorInput(
+                          "Generation",
+                          Number(event.target.value)
+                        )
+                      }
+                      className="h-11 w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 text-sm text-slate-100 outline-none ring-cyan-300/0 transition focus:ring-3 focus:ring-cyan-300/20"
+                    >
+                      {predictorGenerations.map((generation) => (
+                        <option key={generation} value={generation}>
+                          Generation {generation}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+                  {predictorStatFields.map((field) => (
+                    <label key={field.key} className="space-y-2">
+                      <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                        {field.label}
+                      </span>
+                      <input
+                        required
+                        type="number"
+                        min="1"
+                        max="255"
+                        value={predictorInput[field.key]}
+                        onChange={(event) =>
+                          updatePredictorInput(field.key, Number(event.target.value))
+                        }
+                        className="h-11 w-full rounded-lg border border-white/10 bg-slate-950/60 px-3 text-sm tabular-nums text-slate-100 outline-none ring-cyan-300/0 transition focus:ring-3 focus:ring-cyan-300/20"
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[auto_1fr] lg:items-center">
+                  <Button
+                    type="submit"
+                    disabled={isPredicting}
+                    className="h-10 w-fit bg-cyan-300 px-4 text-slate-950 hover:bg-cyan-200"
+                  >
+                    {isPredicting ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="size-4" />
+                    )}
+                    {isPredicting ? "Analyzing" : "Analyze Pokemon"}
+                  </Button>
+
+                  {predictionError ? (
+                    <p className="text-sm text-rose-200">{predictionError}</p>
+                  ) : predictionResult ? (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <span className="font-semibold text-white">
+                          ML prediction: {predictionResult.prediction}
+                        </span>
+                        <span className="text-cyan-100">
+                          Legendary{" "}
+                          {formatProbability(
+                            predictionResult.legendary_probability
+                          )}
+                        </span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-slate-800 ring-1 ring-white/10">
+                        <div
+                          className="h-full rounded-full bg-cyan-300 transition-all duration-500"
+                          style={{
+                            width: formatProbability(
+                              predictionResult.legendary_probability
+                            ),
+                          }}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Non-Legendary{" "}
+                        {formatProbability(
+                          predictionResult.non_legendary_probability
+                        )}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-400">
+                      Submit stats to call the deployed Modal FastAPI model.
+                    </p>
+                  )}
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </section>
 
         <Card className="rounded-lg border-white/10 bg-white/[0.06] shadow-2xl shadow-black/20 backdrop-blur">
           <CardHeader className="border-b border-white/10">
@@ -1042,6 +1376,7 @@ export default function Home() {
         <PokemonDetail
           pokemon={selectedPokemon}
           allPokemon={pokemon}
+          onAnalyzeWithMl={analyzePokemonWithMl}
           onClose={() => setSelectedPokemon(null)}
         />
       ) : null}
